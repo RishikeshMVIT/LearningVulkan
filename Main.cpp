@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <vector>
+#include <optional>
 
 #pragma endregion
 
@@ -62,6 +63,16 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 }
 
 #pragma endregion
+
+struct QueueFamilyIndices
+{
+	std::optional<unsigned int> graphicsFamily;
+
+	bool IsCompleted()
+	{
+		return graphicsFamily.has_value();
+	}
+};
 
 class Application
 {
@@ -145,6 +156,78 @@ public:
 			}
 		}
 
+		//Pick Physical Device
+		{
+			unsigned int deviceCount = 0;
+			vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
+
+			if (deviceCount == 0)
+			{
+				throw std::runtime_error("Failed to find Vulkan supported GPUs");
+			}
+
+			std::vector<VkPhysicalDevice> devices(deviceCount);
+			vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
+
+			for (const auto device : devices)
+			{
+				if (IsDeviceSuitable(device))
+				{
+					_physicalDevice = device;
+					break;
+				}
+			}
+
+			if (_physicalDevice == VK_NULL_HANDLE)
+			{
+				throw std::runtime_error("Failed to find suitable GPU");
+			}
+		}
+
+		//Create Logical Device
+		{
+			QueueFamilyIndices indices = FindQueueFamilyIndices(_physicalDevice);
+
+			float queuePriority = 1.0f;
+
+			VkDeviceQueueCreateInfo queueInfo = {};
+			queueInfo.sType				= VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueInfo.pNext				= nullptr;
+			//queueInfo.flags			= nullptr;
+			queueInfo.queueFamilyIndex	= indices.graphicsFamily.value();
+			queueInfo.queueCount		= 1;
+			queueInfo.pQueuePriorities	= &queuePriority;
+
+			VkPhysicalDeviceFeatures deviceFeatures = {};
+
+			VkDeviceCreateInfo deviceInfo = {};
+			deviceInfo.sType					= VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+			deviceInfo.pNext					= nullptr;
+			//deviceInfo.flags					= nullptr;
+			deviceInfo.queueCreateInfoCount		= 1;
+			deviceInfo.pQueueCreateInfos		= &queueInfo;
+			if (enableValidationLayers)
+			{
+				deviceInfo.enabledLayerCount	= static_cast<unsigned int>(validationLayers.size());
+				deviceInfo.ppEnabledLayerNames	= validationLayers.data();
+			}
+			else
+			{
+				deviceInfo.enabledLayerCount	= 0;
+				//deviceInfo.ppEnabledLayerNames = nullptr;
+			}
+			deviceInfo.enabledExtensionCount	= 0;
+			//deviceInfo.ppEnabledExtensionNames	= ;
+			deviceInfo.pEnabledFeatures			= &deviceFeatures;
+
+			if (vkCreateDevice(_physicalDevice, &deviceInfo, nullptr, &_device) != VK_SUCCESS)
+			{
+				throw std::runtime_error("Failed to create Vulkan logical device");
+			}
+
+			vkGetDeviceQueue(_device, indices.graphicsFamily.value(), 0, &_graphicsQueue);
+		}
+
 		//Main Loop
 		{
 			while (!glfwWindowShouldClose(_window))
@@ -155,6 +238,9 @@ public:
 
 		//Cleanup and Shutdown
 		{
+
+			vkDestroyDevice(_device, nullptr);
+
 			if (enableValidationLayers)
 			{
 				DestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
@@ -229,6 +315,38 @@ private:
 		//pDebugMessengerInfo.pUserData;
 	}
 
+	bool IsDeviceSuitable(VkPhysicalDevice device)
+	{
+		QueueFamilyIndices indices = FindQueueFamilyIndices(device);
+		return indices.IsCompleted();
+	}
+
+	QueueFamilyIndices FindQueueFamilyIndices(VkPhysicalDevice device)
+	{
+		QueueFamilyIndices indices;
+		unsigned int queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+
+		std::vector<VkQueueFamilyProperties> queueFamilyProperties(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilyProperties.data());
+		
+		int i = 0;
+		for (const auto queueFamily: queueFamilyProperties)
+		{
+			if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+			{
+				indices.graphicsFamily = i;
+			}
+
+			if (indices.IsCompleted())
+			{
+				break;
+			}
+		}
+
+		return indices;
+	}
+
 	static VKAPI_ATTR VkBool32 VKAPI_CALL DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT * pCallbackData, void * pUserData)
 	{
 		std::cerr << "Validation Layer: " << pCallbackData->pMessage << std::endl;
@@ -239,6 +357,9 @@ private:
 private:
 	GLFWwindow * _window = nullptr;
 	VkInstance _instance = nullptr;
+	VkPhysicalDevice _physicalDevice = VK_NULL_HANDLE;
+	VkDevice _device = nullptr;
+	VkQueue _graphicsQueue = nullptr;
 	VkDebugUtilsMessengerEXT _debugMessenger = nullptr;
 };
 
