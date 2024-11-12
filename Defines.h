@@ -1,14 +1,22 @@
 #pragma once
 
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
+#define GLFW_EXPOSE_NATIVE_WIN32
+#define NOMINMAX
 
 #include <iostream>
 #include <stdexcept>
 #include <cstdlib>
+#include <cstdint>
 #include <vector>
+#include <limits>
 #include <optional>
+#include <set>
+#include <algorithm>
 
 #include <GLFW/glfw3.h>
+#include <GLFW/glfw3native.h>
 
 // Unsigned int types.
 typedef unsigned char U8;
@@ -27,7 +35,7 @@ typedef float F32;
 typedef double F64;
 
 // Boolean types
-typedef int B32;
+typedef bool B32;
 typedef char B8;
 
 // Properly define static assertions.
@@ -62,9 +70,17 @@ STATIC_ASSERT(sizeof(F64) == 8, "Expected F64 to be 8 bytes.");
 struct QueueFamilyIndices
 {
     std::optional<U32> graphicsFamily;
+    std::optional<U32> presentFamily;
 
     bool IsComplete()
     {
-        return graphicsFamily.has_value();
+        return graphicsFamily.has_value() && presentFamily.has_value();
     }
+};
+
+struct SwapchainSupportDetails
+{
+    VkSurfaceCapabilitiesKHR capabilities;
+    std::vector<VkSurfaceFormatKHR> formats;
+    std::vector<VkPresentModeKHR> presentModes;
 };
